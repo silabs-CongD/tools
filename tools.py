@@ -37,19 +37,16 @@ def install_sli_cli():
 # Install Sim5
 def install_sim5():
 	sim5_url = "https://github.com/silabs-CongD/tools/releases/download/v2.0/SimplicityStudio-5_linux.tgz"
-	
-	# arm_gcc_dir = os.path.join(tools_folder_path, "arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi")
 	sim5_path = os.path.join(tools_folder_path, "SimplicityStudio_v5")
 	if not os.path.isfile(os.path.join(sim5_path, "studio")):
 		print("Downloading and unzipping Sim5 ...")
-		dload.save(sim5_url, os.path.join(tools_folder_path, "ss5.tar.xz"))
-		tar = tarfile.open(os.path.join(tools_folder_path, "ss5.tar.xz"), "r:xz")  
+		dload.save(sim5_url, os.path.join(tools_folder_path, "ss.tar.gz"))
+		tar = tarfile.open(os.path.join(tools_folder_path,"ss.tar.gz"), "r:gz")
 		tar.extractall(path=tools_folder_path)
 		tar.close()
-		# os.remove("gcc.tar.xz")
+		os.remove("ss.tar.gz")
 	else:
 		print("Sim5 already installed")
-	
 
 # Install gcc_12.2
 def install_gcc_12():

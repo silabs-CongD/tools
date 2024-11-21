@@ -208,8 +208,22 @@ def check_coding_style() {
   }    
 }
 
-def build_common_project(repo_name) {
-  env.repo = repo_name
+def check_build_report() {
+  build_report = readFile('build_test_project.html')
+	if (build_report.contains("Fail") | build_report.contains('FAIL')) {
+		setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
+		catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+			sh 'exit 1'
+		}
+	}
+	else {
+		setBuildStatus("Build succeeded", "SUCCESS", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
+		sh 'exit 0'
+	}
+}
+
+def build_common_project() {
+  env.repo = REPO_NAME
 
   sh '''
   export JAVA_HOME=$WORKSPACE/opt/sonar-scanner-6.2.1.4610-linux-x64/jre
@@ -228,39 +242,7 @@ def build_common_project(repo_name) {
   archiveArtifacts 'build_test_project.html'
   junit 'out/*.xml'
   
-  build_report = readFile('build_test_project.html')
-	if (build_report.contains("Fail") | build_report.contains('FAIL')) {
-		setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-		catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-			sh 'exit 1'
-		}
-	}
-	else {
-		setBuildStatus("Build succeeded", "SUCCESS", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-		sh 'exit 0'
-	}  
-}
-
-def post_build_stage() {
-  if (fileExists('build_test_project.html')) {
-    // Trong 1 vài case, mặc dù Build stages Pass nhưng khi 1 stage Fail eg check README, 
-    // post của stages {} dưới cùng sẽ trigger lại phần Post này => Dẫn đến status trên GH PR lại thành Fail
-    // Do đó không nên fix set Fail ở đây mà cần check lại build_report.html
-    build_report = readFile('build_test_project.html')
-    if (build_report.contains("Fail") | build_report.contains('FAIL')) {
-      setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-      catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-        sh 'exit 1'
-      }
-    }
-    else {
-      setBuildStatus("Build succeeded", "SUCCESS", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-      sh 'exit 0'
-    }
-  } else {
-    // If build has been aborted => Show console log to get the errors.
-    setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/console");
-  }
+  check_build_report()    
 }
 
 return this

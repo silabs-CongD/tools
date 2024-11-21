@@ -241,27 +241,5 @@ def build_common_project(repo_name) {
 	}  
 }
 
-def post_build_stage() {
-  def build_test = fileExists 'build_test_project.html'
-  if (build_test) {
-    // Trong 1 vài case, mặc dù Build stages Pass nhưng khi 1 stage Fail eg check README, 
-    // post của stages {} dưới cùng sẽ trigger lại phần Post này => Dẫn đến status trên GH PR lại thành Fail
-    // Do đó không nên fix set Fail ở đây mà cần check lại build_report.html
-    build_report = readFile('build_test_project.html')
-    if (build_report.contains("Fail") | build_report.contains('FAIL')) {
-      setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-      catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-        sh 'exit 1'
-      }
-    }
-    else {
-      setBuildStatus("Build succeeded", "SUCCESS", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-      sh 'exit 0'
-    }
-  } else {
-    // If build has been aborted => Show console log to get the errors.
-    setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/console");
-  }
-}
 
 return this

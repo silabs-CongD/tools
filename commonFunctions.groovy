@@ -208,22 +208,8 @@ def check_coding_style() {
   }    
 }
 
-def check_build_report() {
-  build_report = readFile('build_test_project.html')
-	if (build_report.contains("Fail") | build_report.contains('FAIL')) {
-		setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-		catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-			sh 'exit 1'
-		}
-	}
-	else {
-		setBuildStatus("Build succeeded", "SUCCESS", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
-		sh 'exit 0'
-	}
-}
-
-def build_common_project() {
-  env.repo = REPO_NAME
+def build_common_project(repo_name) {
+  env.repo = repo_name
 
   sh '''
   export JAVA_HOME=$WORKSPACE/opt/sonar-scanner-6.2.1.4610-linux-x64/jre
@@ -242,7 +228,140 @@ def build_common_project() {
   archiveArtifacts 'build_test_project.html'
   junit 'out/*.xml'
   
-  check_build_report()    
+  build_report = readFile('build_test_project.html')
+	if (build_report.contains("Fail") | build_report.contains('FAIL')) {
+		setBuildStatus("Build failed", "FAILURE", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
+		catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+			sh 'exit 1'
+		}
+	}
+	else {
+		setBuildStatus("Build succeeded", "SUCCESS", "ci/build-BuildTestProjects", "${BUILD_URL}/artifact/build_test_project.html");
+		sh 'exit 0'
+	}   
+}
+
+def check_sonarqube(SONAR_PROJECT) {
+  env.repo = SONAR_PROJECT
+
+  // Avoid bug: If Sonar scanner tool fail/error => It jump to post{} and ignore check sonar_log.txt steps
+  setBuildStatus("Build failed", "FAILURE", "ci/build-CheckSonarQube", "https://sonarqube.silabs.net/dashboard?id=${SONAR_PROJECT}&branch=${env.ghprbSourceBranch}");
+
+  sh '''
+  rm -rf "ws"
+  rm -rf "changed_projects"
+
+  mkdir changed_projects
+  while read line; do cp -r ./projects/$line --parents ./changed_projects; done < changed_projects.txt
+
+  find $WORKSPACE/changed_projects -name *.c -o -name *.h > source_list.txt
+  size=$(stat -c %s source_list.txt)
+  if [ $size = 0 ]; then
+    echo "No source files found" > sonarqube_log.txt
+    exit 1
+  fi
+
+  find $WORKSPACE/changed_projects -name *.slcp -o -name *.sls > solution_list.txt
+  size=$(stat -c %s solution_list.txt)
+  if [ $size = 0 ]; then
+    echo "No solution files found" > sonarqube_log.txt
+    exit 1
+  fi			
+  '''
+
+  stdout = sh(returnStdout:true , script: 'while read line; do echo **/$(basename $line); done < source_list.txt').trim()
+  result = stdout.readLines().drop(1).join(", ")
+  echo result
+  
+  BUILD_WRAPPER_PATH="$WORKSPACE/pull_request_process/tools/sonarqube_new/sonar_wrapper_linux/build-wrapper-linux-x86-64"
+  SONAR_SCANNER_PATH="$WORKSPACE/opt/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner"
+  SCRIPT_PATH="$WORKSPACE/pull_request_process/scripts/checkproject.py"
+  PROJECT_PATH="$WORKSPACE/changed_projects"
+
+  sh """
+  export CHECK_SONARQUBE=1
+  export JAVA_HOME=$WORKSPACE/opt/sonar-scanner-6.2.1.4610-linux-x64/jre
+  export PATH="usr/bin/python3:\$JAVA_HOME/bin:${PATH}"          
+  $SL_SLC_PATH configuration -gcc $ARM_GCC_DIR
+                      
+  chmod +x $BUILD_WRAPPER_PATH
+  chmod +x $SONAR_SCANNER_PATH
+
+  $BUILD_WRAPPER_PATH --out-dir $SL_WORKSPACE_PATH/out python3 -u $SCRIPT_PATH --release --slcpgcc --sls $PROJECT_PATH
+  $SONAR_SCANNER_PATH -D"sonar.verbose=true" -D"sonar.qualitygate.wait=True" \
+  -D"sonar.branch.name=$ghprbSourceBranch" -D"sonar.scm.disabled=True" \
+  -D"sonar.projectName=${SONAR_PROJECT}" -D"sonar.projectKey=${SONAR_PROJECT}" -D"sonar.projectBaseDir=$SL_WORKSPACE_PATH/ws" \
+  -D"sonar.sources=." -D"sonar.inclusions=$result" -D"sonar.host.url=https://sonarqube.silabs.net" \
+  -D"sonar.token=$SONAR_SECRET_KEY" -D"sonar.cfamily.threads=4" -D"sonar.language=c" \
+  -D"sonar.exclusions=**/autogen/**,**gecko_sdk_**,**/config/**,**/*.html, .metadata, .scannerwork, .metadata/**" > sonar_log.txt
+  """
+
+  // archiveArtifacts 'sonar_log.txt'
+  tmp = readFile('sonar_log.txt')
+  if (tmp.contains("EXECUTION SUCCESS")) {
+    setBuildStatus("Build succeeded", "SUCCESS", "ci/build-CheckSonarQube", "https://sonarqube.silabs.net/dashboard?id=${SONAR_PROJECT}&branch=${env.ghprbSourceBranch}");
+    sh 'exit 0'
+  }
+  else {
+    setBuildStatus("Build failed", "FAILURE", "ci/build-CheckSonarQube", "https://sonarqube.silabs.net/dashboard?id=${SONAR_PROJECT}&branch=${env.ghprbSourceBranch}");
+
+    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+      sh 'exit 1'
+    }
+  }   
+}
+
+def update_shield(repo_name) {
+  env.repo = repo_name
+
+  // Apply Shield for README.md
+  sh '''
+  export SCRIPT_PATH="$WORKSPACE/pull_request_process/scripts/github_shield.py"
+  python3 -u $SCRIPT_PATH --check_change $WORKSPACE/changed_projects.txt
+  '''
+
+  // Commit .json
+  dir('ci_repo') {
+    withCredentials([gitUsernamePassword(credentialsId: 'github-username-token', gitToolName: 'Default')]) {
+      sh '''#!/bin/bash
+      git config --global user.name "svc_bot.iot-apps"
+      git config --global user.email "svc_bot.iot-apps@silabs.com" 
+
+      git pull origin master
+      git status > git_log.txt
+      diff=0
+      while read line; do if [[ "$line" == *"Changes not staged for commit"* || "$line" == *"but untracked files present"* ]];then ((diff += 1)); fi; done < git_log.txt
+      
+      if [ $diff -gt 0 ]; then
+      rm -rf ./git_log.txt
+      git add .
+      git commit -m "Automatically commit .json files"
+      git push origin "master"
+      fi
+      '''
+    }
+  }
+
+  //  commit changed README.md file
+  dir('projects') {
+    withCredentials([gitUsernamePassword(credentialsId: 'github-username-token', gitToolName: 'Default')]) {
+      sh '''#!/bin/bash
+      git config --global user.name "svc_bot.iot-apps"
+      git config --global user.email "svc_bot.iot-apps@silabs.com" 
+
+      git status > git_log.txt
+      diff=0
+      while read line; do if [[ "$line" == *"Changes not staged for commit"* ]];then ((diff += 1)); fi; done < git_log.txt
+
+      if [ $diff -gt 0 ]; then
+      rm -rf ./git_log.txt
+      git add .
+      git commit -m "Automatically update Shield for README.md"
+      git push origin $ghprbSourceBranch
+      fi
+      '''
+    }
+  }  
 }
 
 return this

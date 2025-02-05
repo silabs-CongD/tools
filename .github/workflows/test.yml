@@ -47,12 +47,12 @@ jobs:
           # Clone third_party_extension version is: 2.0.0
           git clone https://github.com/SiliconLabs/third_party_hw_drivers_extension.git --branch=v2.0.0
           # Add TPHD to gsdk extension
-          export GSDK_DIR=gecko_sdk
+          export GSDK_DIR=${{ github.workspace }}/gecko_sdk
           mkdir -p $GSDK_DIR/extension
           cp -r third_party_hw_drivers_extension $GSDK_DIR/extension
           
-          $SL_SLC_PATH configuration --sdk
-          $SL_SLC_PATH signature trust --sdk
+          $SL_SLC_PATH configuration --sdk $GSDK_DIR
+          $SL_SLC_PATH signature trust --sdk $GSDK_DIR
           $SL_SLC_PATH signature trust -extpath $GSDK_DIR/extension/third_party_hw_drivers_extension
 
         

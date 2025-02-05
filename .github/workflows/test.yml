@@ -59,7 +59,7 @@ jobs:
       - name: Build
         run: |
           $SL_SLC_PATH configuration -gcc $ARM_GCC_DIR
-          export SLCP_FILE_PATH=${{ github.workspace }}/projects/bluetooth_air_quality_monitor
+          export SLCP_FILE_PATH=${{ github.workspace }}/projects/bluetooth_air_quality_monitor/SimplicityStudio/bluetooth_air_quality_monitor.slcp
 
           $SL_SLC_PATH generate --force .slcp -cp -np -d ${{ github.workspace }}/ws -name=demo_slcp --with=brd4166a
           cd ${{ github.workspace }}/ws

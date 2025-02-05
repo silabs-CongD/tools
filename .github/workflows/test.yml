@@ -1,6 +1,8 @@
 name: Check Build
 
-on: [push]
+on:
+  workflow_dispatch:
+    
 
 env:
   SL_SLC_PATH: ${{ github.workspace }}/tools/slc_cli/slc

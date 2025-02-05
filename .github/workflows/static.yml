@@ -36,6 +36,8 @@ jobs:
       
       - name: create
         run: |
+          mkdir haha
+
           echo "<!DOCTYPE html>
           <html>
           <head>
@@ -45,14 +47,14 @@ jobs:
               <h1>Hello, World!</h1>
               <p>This is a basic HTML file.</p>
           </body>
-          </html>" > index.html
+          </html>" > haha/index.html
 
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload entire repository
-          path: 'index.html'
+          path: 'haha'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

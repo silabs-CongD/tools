@@ -1,18 +1,66 @@
-name: Test
+name: Check Build
 
-on: push
+on: [push]
+
+env:
+  SL_SLC_PATH: ${{ github.workspace }}/tools/slc_cli/slc
+  SS_URL: https://github.com/silabs-CongD/tools/releases/download/v2.0/SimplicityStudio-5_linux.tgz
+  SL_STUDIO_BUILD_PATH: ${{ github.workspace }}/tools/SimplicityStudio_v5
+  ARM_GCC_DIR: ${{ github.workspace }}/tools/SimplicityStudio_v5/developer/toolchains/gnu_arm/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi
+  WORKSPACE: ${{ github.workspace }}
 
 jobs:
-  test:
+  check-build:
     runs-on: ubuntu-latest
     steps:
-      - name: docker
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: 'pr_check'
+
+      - name: Check out public repo
+        uses: actions/checkout@v4
+        with:
+          repository: 'SiliconLabs/bluetooth_applications'
+          ref: 'master'
+          path: 'projects'
+
+      - name: Install dependencies
         run: |
-          pwd
-          docker pull hello-world
+          pip3 install gitpython
 
-          ls .
-          docker run hello-world
+          curl -L -o slccli.zip https://www.silabs.com/documents/login/software/slc_cli_linux.zip
+          unzip slccli.zip -d tools > /dev/null && rm slccli.zip
+          chmod +x $SL_SLC_PATH
 
-          docker images hello-world
+          curl -L -o ss.tgz $SS_URL
+          tar -xvf ss.tgz -C tools > /dev/null && rm ss.tgz
+          chmod +x $SL_STUDIO_BUILD_PATH/developer/toolchains/gnu_arm/10.3_2021.10
+
+          curl -L -o 12.2.tgz https://github.com/SiliconLabs/application_examples_ci/releases/download/v1.2/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi.tar.xz
+          tar -xvf 12.2.tgz -C $SL_STUDIO_BUILD_PATH/developer/toolchains/gnu_arm > /dev/null
+          ls $SL_STUDIO_BUILD_PATH/developer/toolchains/gnu_arm
+          chmod +x $ARM_GCC_DIR
+
+          # Clone gsdk: v4.4.0
+          git clone https://github.com/SiliconLabs/gecko_sdk.git --branch=v4.4.0
+          # Clone third_party_extension version is: 2.0.0
+          git clone https://github.com/SiliconLabs/third_party_hw_drivers_extension.git --branch=v2.0.0
+          # Add TPHD to gsdk extension
+          export GSDK_DIR=gecko_sdk
+          mkdir -p $GSDK_DIR/extension
+          cp -r third_party_hw_drivers_extension $GSDK_DIR/extension
+          
+          $SL_SLC_PATH configuration --sdk
+          $SL_SLC_PATH signature trust --sdk
+          $SL_SLC_PATH signature trust -extpath $GSDK_DIR/extension/third_party_hw_drivers_extension
+
         
+      - name: Build
+        run: |
+          $SL_SLC_PATH configuration -gcc $ARM_GCC_DIR
+          export SLCP_FILE_PATH=${{ github.workspace }}/projects/bluetooth_air_quality_monitor
+
+          $SL_SLC_PATH generate --force .slcp -cp -np -d ${{ github.workspace }}/ws -name=demo_slcp --with=brd4166a
+          cd ${{ github.workspace }}/ws
+          make -f demo_slcp.Makefile

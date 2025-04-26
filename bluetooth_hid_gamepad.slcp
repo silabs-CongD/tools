@@ -56,7 +56,7 @@ config_file:
   - override:
       component: gatt_configuration
       file_id: gatt_configuration_file_id
-    path: "../config/gatt_configuration.btconf"
+    path: "../config/btconf/gatt_configuration.btconf"
     directory: "btconf"
 
 other_file:
